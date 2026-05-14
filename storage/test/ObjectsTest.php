@@ -42,6 +42,69 @@ class ObjectsTest extends TestCase
         self::$contents = ' !"#$%&\'()*,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~';
     }
 
+    public function testObjectContexts()
+    {
+        $objectContextsBucket = self::$storage->createBucket(
+            sprintf('%s-test-bucket-%s', self::$projectId, uniqid())
+        );
+        $bucketName = $objectContextsBucket->name();
+        $objectName = 'object-contexts-' . uniqid();
+        $object = $objectContextsBucket->upload('test', [
+            'name' => $objectName,
+        ]);
+        $objectInfo = $object->info()['name'];
+
+        // Set Object Contexts
+        $setOutput = $this->runFunctionSnippet('set_object_contexts', [
+            $bucketName,
+            $objectInfo,
+        ]);
+
+        $this->assertStringContainsString("Contexts for object $objectInfo were updated", $setOutput);
+
+        // Get Object Contexts
+        $getOutput = $this->runFunctionSnippet('get_object_contexts', [
+            $bucketName,
+            $objectInfo
+        ]);
+
+        $this->assertStringContainsString('Key: department, Value: finance', $getOutput);
+        $this->assertStringContainsString('Key: priority, Value: high', $getOutput);
+
+        // List Object Contexts using filter
+        $listOutput = $this->runFunctionSnippet('list_object_contexts', [
+            $bucketName
+        ]);
+        $this->assertStringContainsString("Found object: $objectInfo", $listOutput);
+
+        // Clear all contexts on the object.
+        $object->update([
+            'contexts' => [
+                'custom' => null,
+            ],
+        ]);
+        $object->reload();
+
+        $clearedGetOutput = $this->runFunctionSnippet('get_object_contexts', [
+            $bucketName,
+            $objectName
+        ]);
+
+        $this->assertStringNotContainsString('Key: department, Value: finance', $clearedGetOutput);
+        $this->assertStringNotContainsString('Key: priority, Value: high', $clearedGetOutput);
+
+        $clearedInfo = $object->info();
+        $this->assertTrue(empty($clearedInfo['contexts']['custom'] ?? []));
+
+        // List again with filter after clearing contexts.
+        $clearedListOutput = $this->runFunctionSnippet('list_object_contexts', [
+            $bucketName
+        ]);
+        $this->assertEmpty(trim($clearedListOutput));
+        $object->delete();
+        $objectContextsBucket->delete();
+    }
+
     public function testListObjects()
     {
         $output = self::runFunctionSnippet('list_objects', [
