@@ -260,7 +260,10 @@ EOF;
         return [[true], [false]];
     }
 
-    public function testCompose()
+    /**
+     * @dataProvider provideCompose
+     */
+    public function testCompose(bool $deleteSourceObjects)
     {
         $bucket = self::$storage->bucket(self::$bucketName);
         $object1Name = uniqid('compose-object1-');
@@ -269,26 +272,53 @@ EOF;
         $bucket->upload('content', ['name' => $object2Name]);
 
         $targetName = uniqid('compose-object-target-');
-        $output = self::runFunctionSnippet('compose_file', [
+
+        $args = [
             self::$bucketName,
             $object1Name,
             $object2Name,
             $targetName,
-        ]);
+        ];
 
-        $this->assertEquals(
-            sprintf(
-                'New composite object %s was created by combining %s and %s',
-                $targetName,
-                $object1Name,
-                $object2Name
-            ),
-            $output
+        if ($deleteSourceObjects) {
+            $args[] = true;
+        }
+
+        $output = self::runFunctionSnippet('compose_file', $args);
+
+        $expectedOutput = sprintf(
+            'New composite object %s was created by combining %s and %s',
+            $targetName,
+            $object1Name,
+            $object2Name
         );
 
-        $bucket->object($object1Name)->delete();
-        $bucket->object($object2Name)->delete();
+        if ($deleteSourceObjects) {
+            $expectedOutput .= ' and source objects were deleted';
+        }
+        $expectedOutput .= PHP_EOL;
+
+        $this->assertEquals($expectedOutput, $output);
+
+        if ($deleteSourceObjects) {
+            $this->assertFalse($bucket->object($object1Name)->exists());
+            $this->assertFalse($bucket->object($object2Name)->exists());
+        } else {
+            $this->assertTrue($bucket->object($object1Name)->exists());
+            $this->assertTrue($bucket->object($object2Name)->exists());
+        }
+
+        if (!$deleteSourceObjects) {
+            $bucket->object($object1Name)->delete();
+            $bucket->object($object2Name)->delete();
+        }
+
         $bucket->object($targetName)->delete();
+    }
+
+    public function provideCompose()
+    {
+        return [[true], [false]];
     }
 
     public function testUploadAndDownloadObjectFromMemory()
